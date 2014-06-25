@@ -1,6 +1,7 @@
 <?php
 require_once("twitteroauth/twitteroauth.php");
 
+
 class twitterLoadFeed
 {
 	//The user you want to load tweets
@@ -20,12 +21,12 @@ class twitterLoadFeed
 	public $tweetsLimit = 5;
 	//Use dates like "1 minute ago"
 	public $useAdvancedDates = true;
-	//Output format: 1 XML, 2 JSON, 3 PLAIN TEXT
-	public $outputFormat = 1;
+	//Output format: 0 PHP array, 1 XML, 2 JSON, 3 PLAIN TEXT
+	public $outputFormat = 0;
 	//Enable cache for feeds, this procedure is highly recommended not to exceed the 150 request/hour limit
-	public $useCache = false;
+	public $useCache = true;
 	//Cache file, not existent it will be generated
-	public $cacheFile = "";
+	public $cacheFile = "cache.txt";
 	//Time in seconds before refreshing the cache file, usually 1 minute is a good value
 	public $cacheStoreTime = 60;
 	
@@ -39,7 +40,7 @@ class twitterLoadFeed
 	{
 		if(file_exists($this->cacheFile))
 		{
-			if(filemtime($cache_file) > time()-$this->cacheStoreTime)
+			if(filemtime($this->cacheFile) > time()-$this->cacheStoreTime)
 			{
 				return true;
 			}
@@ -50,13 +51,9 @@ class twitterLoadFeed
 	//Create cached version of the output or update an existing one
 	function cacheGenerate()
 	{
-		if(is_writable($this->cacheFile))
+		if(file_put_contents($this->cacheFile, serialize($this->feed)))
 		{
-			if(file_put_contents($this->cacheFile, $this->feed, FILE_APPEND))
-			{
-				return true;
-			}
-			return false;
+			return true;
 		}
 		return false;
 	}
@@ -78,7 +75,7 @@ class twitterLoadFeed
 				"text" => $this->addLinks($t->text),
 				"retweet_count" => $t->retweet_count,
 				"favorite_count" => $t->favorite_count,
-				"created_at" => $t->created_at,
+				"created_at" => $this->formatDate($t->created_at),
 			);
 			$i++;
 		}
@@ -95,8 +92,43 @@ class twitterLoadFeed
 	//Format Date
 	function formatDate($date)
 	{
+		$date = strtotime($date);
+		$now = time();
+		$delay = $now - $date;
+		
+		if( $delay < 60) //Till 60 seconds
+		{
+			$date = $delay." seconds ago";
+		}
+		elseif($delay >= 60 && $delay < 3600) //Till  60 minutes
+		{
+			$delay=floor($delay/60);
+			if($delay > 1)
+			{
+				$date = $delay." minutes ago";
+			}
+			else
+			{
+				$date = $delay." minute ago";
+			}
+		}
+		elseif($delay >= 3600 && $delay < 86400) //Till 24 hours
+		{
+			$delay=floor($delay/3600);
+			if($delay > 1)
+			{
+				$date = $delay." hours ago";
+			}
+			else
+			{
+				$date = $delay." hour ago";
+			}
+		}
+		else // More than a day
+		{
+			$date = date("d M Y h:s A",$date);
+		}
 		return $date;
-
 	}
 	
 	//Open a connection and load twitter feeds
@@ -116,7 +148,11 @@ class twitterLoadFeed
 				if(count($tmp) > 0)
 				{
 					$this->formatTweets($tmp);
-					print_r($tmp);
+					
+					if($this->useCache)
+					{
+						$this->cacheGenerate();
+					}
 					return $this->feed;			
 				}
 				return false;
